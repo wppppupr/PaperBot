@@ -7,7 +7,7 @@ import os
 API_KEY = "AIzaSyDqnPBa9SLpCj7ygH56PooWQLfGtJVf48o"
 KEYWORDS = ["active matter", "self-propelled"]
 SEARCH_DAYS = 7  # 過去7日分
-MAX_RESULTS = 15 # 処理する論文の最大数
+MAX_RESULTS = 150 # 処理する論文の最大数
 OUTPUT_FILE = "active_matter_report.md"
 # =============================================
 
@@ -44,7 +44,7 @@ def summarize_with_gemini(papers):
     genai.configure(api_key=API_KEY)
     # 研究者向けのコンテキストを設定
     model = genai.GenerativeModel(
-        model_name='gemini-1.5-flash',
+        model_name='models/gemini-2.0-flash',
         system_instruction="あなたはアクティブマターと統計物理学を専門とする物理学研究者です。提供された論文リストから学術的価値が高いものを厳選し、日本語で構造化されたレポートを作成してください。"
     )
     
