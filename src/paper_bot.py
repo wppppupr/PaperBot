@@ -6,8 +6,8 @@ import os
 # ================= 設定エリア =================
 API_KEY = "AIzaSyDqnPBa9SLpCj7ygH56PooWQLfGtJVf48o"
 KEYWORDS = ["active matter", "self-propelled"]
-SEARCH_DAYS = 7  # 過去7日分
-MAX_RESULTS = 150 # 処理する論文の最大数
+SEARCH_DAYS = 700  # 過去7日分
+MAX_RESULTS = 15000 # 処理する論文の最大数
 OUTPUT_FILE = "active_matter_report.md"
 # =============================================
 
