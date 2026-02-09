@@ -1,0 +1,12 @@
+[workspace]
+authors = ["sasaki_mac <0704waffle@gmail.com>"]
+channels = ["conda-forge"]
+name = "PaperBot"
+platforms = ["osx-arm64"]
+version = "0.1.0"
+
+[tasks]
+
+[dependencies]
+google-generativeai = ">=0.8.6,<0.9"
+requests = ">=2.32.5,<3"
