@@ -3,6 +3,7 @@
 !.pixi/config.toml
 
 *.md
+*.log
 
 # Google Drive credentials
 credentials.json
