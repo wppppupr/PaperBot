@@ -106,7 +106,33 @@ def upload_to_gdrive(file_path):
 
     try:
         service = build('drive', 'v3', credentials=creds)
-        file_metadata = {'name': os.path.basename(file_path)}
+        
+        # フォルダ名の設定
+        folder_name = 'Paper bot'
+        
+        # 既存のフォルダを検索
+        query = f"name='{folder_name}' and mimeType='application/vnd.google-apps.folder' and trashed=false"
+        results = service.files().list(q=query, spaces='drive', fields='files(id, name)').execute()
+        items = results.get('files', [])
+        
+        if not items:
+            # フォルダが存在しない場合は作成
+            folder_metadata = {
+                'name': folder_name,
+                'mimeType': 'application/vnd.google-apps.folder'
+            }
+            folder = service.files().create(body=folder_metadata, fields='id').execute()
+            folder_id = folder.get('id')
+            print(f"Created new folder '{folder_name}' with ID: {folder_id}")
+        else:
+            # 存在する場合は最初のフォルダを使用
+            folder_id = items[0].get('id')
+            print(f"Found existing folder '{folder_name}' with ID: {folder_id}")
+            
+        file_metadata = {
+            'name': os.path.basename(file_path),
+            'parents': [folder_id]
+        }
         media = MediaFileUpload(file_path, mimetype='text/markdown')
         
         file = service.files().create(body=file_metadata, media_body=media, fields='id').execute()
