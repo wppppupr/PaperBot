@@ -3,7 +3,6 @@ import arxiv
 import argparse
 import os
 import requests
-import time
 from habanero import Crossref
 from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
@@ -148,33 +147,28 @@ def send_to_discord(file_path, webhook_url):
         with open(file_path, 'r', encoding='utf-8') as f:
             content = f.read()
             
+        # 論文単位で分割する
         chunks = []
         current_chunk = ""
         
         for line in content.split('\n'):
-            if line.startswith("- **") or line.startswith("#"):
+            if line.startswith('- **') or line.startswith('## ') or line.startswith('# '):
+                # 新しい論文や見出しの始まりなので、これまでのまとまりを分割
                 if current_chunk.strip():
                     chunks.append(current_chunk.strip())
-                current_chunk = line + "\n"
+                current_chunk = line + '\n'
             else:
-                current_chunk += line + "\n"
+                current_chunk += line + '\n'
                 
+                # 万が一1つのエントリが1900文字を超える場合のフェイルセーフ
+                if len(current_chunk) > 1900:
+                    chunks.append(current_chunk[:1900])
+                    current_chunk = current_chunk[1900:]
+                    
         if current_chunk.strip():
             chunks.append(current_chunk.strip())
             
-        # Ensure no chunk exceeds Discord's 2000 character limit
-        safe_chunks = []
-        for chunk in chunks:
-            if len(chunk) > 1900:
-                while len(chunk) > 1900:
-                    safe_chunks.append(chunk[:1900])
-                    chunk = chunk[1900:]
-                if chunk:
-                    safe_chunks.append(chunk)
-            else:
-                safe_chunks.append(chunk)
-            
-        for i, chunk in enumerate(safe_chunks):
+        for i, chunk in enumerate(chunks):
             response = requests.post(
                 webhook_url,
                 json={'content': chunk}
@@ -182,7 +176,6 @@ def send_to_discord(file_path, webhook_url):
             if response.status_code not in [200, 204]:
                 print(f"Failed to send chunk {i+1} to Discord. Status code: {response.status_code}")
                 return
-            time.sleep(1)  # Sleep for 1 second to avoid Discord rate limits
                 
         print("Successfully sent to Discord as messages!")
     except Exception as e:
