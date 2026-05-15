@@ -2,6 +2,7 @@ import datetime
 import arxiv
 import argparse
 import os
+import requests
 from habanero import Crossref
 from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
@@ -140,6 +141,22 @@ def upload_to_gdrive(file_path):
     except Exception as error:
         print(f"An error occurred while uploading to Google Drive: {error}")
 
+def send_to_discord(file_path, webhook_url):
+    """Sends the generated file to a Discord webhook."""
+    try:
+        with open(file_path, 'rb') as f:
+            response = requests.post(
+                webhook_url,
+                files={'file': (os.path.basename(file_path), f, 'text/markdown')},
+                data={'content': '新しい論文レポートが生成されました！'}
+            )
+        if response.status_code in [200, 204]:
+            print("Successfully sent to Discord!")
+        else:
+            print(f"Failed to send to Discord. Status code: {response.status_code}")
+    except Exception as e:
+        print(f"An error occurred while sending to Discord: {e}")
+
 if __name__ == "__main__":
     # --- 設定 ---
     parser = argparse.ArgumentParser()
@@ -148,6 +165,7 @@ if __name__ == "__main__":
     parser.add_argument('--filename', type=str, default=None)
     parser.add_argument('--save_folder', type=str, default=None)
     parser.add_argument('--upload', action='store_true', help="Upload the generated file to Google Drive")
+    parser.add_argument('--discord_webhook', type=str, default=None, help="Discord Webhook URL to send the report")
     
     args = parser.parse_args()
     keywords = args.keywords
@@ -155,6 +173,7 @@ if __name__ == "__main__":
     filename = args.filename
     save_folder = args.save_folder
     upload = args.upload
+    discord_webhook = args.discord_webhook
 
     if filename is None:
         filename = f"Active_Matter_Review_{datetime.date.today()}.md"
@@ -173,6 +192,12 @@ if __name__ == "__main__":
     if upload:
         print("Uploading to Google Drive...")
         upload_to_gdrive(filename)
+        
+    if discord_webhook:
+        print("Sending to Discord...")
+        send_to_discord(filename, discord_webhook)
+
+    if upload:
         os.remove(filename)
         
     print("Done!")
