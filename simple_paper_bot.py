@@ -40,10 +40,16 @@ def fetch_papers(keywords, days):
     
     # 指定されたジャーナルのISSNリスト
     target_issns = [
-        '1476-4687', '1755-4349', '1745-2481', '2041-1723', '1476-4660', '0027-8424', '2752-6542', 
-        '2470-0045', '2160-3308', '0031-9007', '1744-683X', 
-        '2375-2548', '1530-6984', '0743-7463', '1936-0851', '2835-8279', '1095-9203', '1549-9626'
+        '1476-4687', '1755-4349', '1745-2481', '2041-1723', '1476-4660', '0027-8424', 
+        '2752-6542', '2470-0045', '2160-3308', '0031-9007', '1744-683X', '2375-2548', 
+        '1530-6984', '0743-7463', '1936-0851', '2835-8279', '1095-9203', '1549-9626'
     ]
+
+    """
+    Nature, Nature Chemistry, Nature Physics, Nature Communications, Nature materials, PNAS, 
+    PNAS-Nexus, Physical Review E, Physical Review X, Physical Review Letters, Soft Matter, Science Advances, 
+    Nano Letters, Langmuir, ACS nano, PRX Life, Science, JCTC, 
+    """
 
     cr = Crossref()
     
