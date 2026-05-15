@@ -142,18 +142,41 @@ def upload_to_gdrive(file_path):
         print(f"An error occurred while uploading to Google Drive: {error}")
 
 def send_to_discord(file_path, webhook_url):
-    """Sends the generated file to a Discord webhook."""
+    """Sends the generated file content as messages to a Discord webhook."""
     try:
-        with open(file_path, 'rb') as f:
+        with open(file_path, 'r', encoding='utf-8') as f:
+            content = f.read()
+            
+        # Discord's message character limit is 2000.
+        # We split the content into chunks of up to 1900 characters to be safe.
+        chunks = []
+        current_chunk = ""
+        for line in content.split('\n'):
+            if len(current_chunk) + len(line) + 1 > 1900:
+                if current_chunk:
+                    chunks.append(current_chunk)
+                    current_chunk = ""
+                
+                # If a single line is longer than 1900 chars, we need to split it further
+                while len(line) > 1900:
+                    chunks.append(line[:1900])
+                    line = line[1900:]
+                current_chunk = line + '\n'
+            else:
+                current_chunk += line + '\n'
+        if current_chunk:
+            chunks.append(current_chunk)
+            
+        for i, chunk in enumerate(chunks):
             response = requests.post(
                 webhook_url,
-                files={'file': (os.path.basename(file_path), f, 'text/markdown')},
-                data={'content': '新しい論文レポートが生成されました！'}
+                json={'content': chunk}
             )
-        if response.status_code in [200, 204]:
-            print("Successfully sent to Discord!")
-        else:
-            print(f"Failed to send to Discord. Status code: {response.status_code}")
+            if response.status_code not in [200, 204]:
+                print(f"Failed to send chunk {i+1} to Discord. Status code: {response.status_code}")
+                return
+                
+        print("Successfully sent to Discord as messages!")
     except Exception as e:
         print(f"An error occurred while sending to Discord: {e}")
 
@@ -165,7 +188,7 @@ if __name__ == "__main__":
     parser.add_argument('--filename', type=str, default=None)
     parser.add_argument('--save_folder', type=str, default=None)
     parser.add_argument('--upload', action='store_true', help="Upload the generated file to Google Drive")
-    parser.add_argument('--discord_webhook', type=str, default=None, help="Discord Webhook URL to send the report")
+    parser.add_argument('--discord_webhook', type=str, default="https://discord.com/api/webhooks/1504761505151844433/C9Ns2fw9IAjhBcUOnP4TqQ4bwOqnYUUd8WxlDVN1MZ9_R1nd3_3Y7H7HFwEJtCS2voxJ", help="Discord Webhook URL to send the report")
     
     args = parser.parse_args()
     keywords = args.keywords
@@ -197,7 +220,8 @@ if __name__ == "__main__":
         print("Sending to Discord...")
         send_to_discord(filename, discord_webhook)
 
-    if upload:
-        os.remove(filename)
+    if upload or discord_webhook:
+        if os.path.exists(filename):
+            os.remove(filename)
         
     print("Done!")
