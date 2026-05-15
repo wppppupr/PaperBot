@@ -1,3 +1,10 @@
 # pixi environments
 .pixi/*
 !.pixi/config.toml
+
+*.md
+
+# Google Drive credentials
+credentials.json
+token.json
+token.pickle
