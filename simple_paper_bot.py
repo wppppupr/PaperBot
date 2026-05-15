@@ -173,5 +173,6 @@ if __name__ == "__main__":
     if upload:
         print("Uploading to Google Drive...")
         upload_to_gdrive(filename)
+        os.remove(filename)
         
     print("Done!")
