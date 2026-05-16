@@ -17,8 +17,8 @@ SCOPES = ['https://www.googleapis.com/auth/drive.file']
 DISCORD_ERROR = 'https://discord.com/api/webhooks/1505023099492372672/tcsWs9KogPc0J6tSleMws5OXvndX0CIOSibVkl8khUuNNSIl-pA8J3KP0BFNLvkmBTdF'
 
 def fetch_papers(keywords, days):
-    last_week = (datetime.datetime.now() - datetime.timedelta(days=days)).strftime('%Y-%m-%d')
-    content = f"# Weekly Active Matter Papers ({last_week} to {datetime.datetime.now().strftime('%Y-%m-%d')})\n\n"
+    last_day = (datetime.datetime.now() - datetime.timedelta(days=days)).strftime('%Y-%m-%d')
+    content = f"# Daily Active Matter Papers ({last_day} to {datetime.datetime.now().strftime('%Y-%m-%d')})\n\n"
 
     print("Fetching from arXiv...")
     # 1. arXivから取得
@@ -65,7 +65,7 @@ def fetch_papers(keywords, days):
     res = cr.works(
         query=f'"{keywords}"', 
         filter={
-            'from-pub-date': last_week,
+            'from-pub-date': last_day,
             'issn': target_issns
         }, 
         limit=500,
