@@ -20,7 +20,11 @@ def fetch_papers(keywords, days):
     print("Fetching from arXiv...")
     # 1. arXivから取得
     content += "## arXiv\n"
-    client = arxiv.Client()
+    client = arxiv.Client(
+        page_size=100,
+        delay_seconds=3.0,
+        num_retries=5
+        )
     search = arxiv.Search(query=f'all:"{keywords}"', max_results=100, sort_by=arxiv.SortCriterion.SubmittedDate)
     
     arxiv_count = 0
@@ -204,6 +208,8 @@ if __name__ == "__main__":
     save_folder = args.save_folder
     upload = args.upload
     discord_webhook = args.discord_webhook
+
+    print("Start paper bot at", datetime.datetime.now())
 
     if filename is None:
         filename = f"Active_Matter_Review_{datetime.date.today()}.md"
