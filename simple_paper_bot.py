@@ -13,6 +13,9 @@ from googleapiclient.http import MediaFileUpload
 # Google Drive API scopes
 SCOPES = ['https://www.googleapis.com/auth/drive.file']
 
+# Discord Webhook for error
+DISCORD_ERROR = 'https://discord.com/api/webhooks/1505023099492372672/tcsWs9KogPc0J6tSleMws5OXvndX0CIOSibVkl8khUuNNSIl-pA8J3KP0BFNLvkmBTdF'
+
 def fetch_papers(keywords, days):
     last_week = (datetime.datetime.now() - datetime.timedelta(days=days)).strftime('%Y-%m-%d')
     content = f"# Weekly Active Matter Papers ({last_week} to {datetime.datetime.now().strftime('%Y-%m-%d')})\n\n"
@@ -221,20 +224,44 @@ if __name__ == "__main__":
     else:
         filename = f"papers/{filename}"
 
-    print("Start fetching papers...")
-    papers_content = fetch_papers(keywords, days)
-    save_to_local(papers_content, filename)
-    
-    if upload:
-        print("Uploading to Google Drive...")
-        upload_to_gdrive(filename)
+    try:    
+        print("Start fetching papers...")
+        papers_content = fetch_papers(keywords, days)
+        save_to_local(papers_content, filename)
         
-    if discord_webhook:
-        print("Sending to Discord...")
-        send_to_discord(filename, discord_webhook)
+        if upload:
+            print("Uploading to Google Drive...")
+            upload_to_gdrive(filename)
+            
+        if discord_webhook:
+            print("Sending to Discord...")
+            send_to_discord(filename, discord_webhook)
 
-    if upload or discord_webhook:
-        if os.path.exists(filename):
-            os.remove(filename)
+        if upload or discord_webhook:
+            if os.path.exists(filename):
+                os.remove(filename)
+            
+        print("Done!")
+
+    except Exception as e:
+        import traceback
         
-    print("Done!")
+        # エラーのスタックトレース（詳細）を取得
+        error_msg = traceback.format_exc()
+        print("An error occurred during execution:")
+        print(error_msg)
+        
+        # Discordの通知用テキスト（2000文字制限を考慮してスライス）
+        discord_error_text = (
+            "<@520785852423733248> \n"
+            f"❌ **【Paper Bot エラー通知】**\n"
+            f"プログラムの実行中にエラーが発生しました。\n"
+            f"```python\n{error_msg}```"
+        )[:1950]
+        
+        # Webhookを使ってエラーをDiscordに送信
+        try:
+            requests.post(DISCORD_ERROR, json={'content': discord_error_text})
+            print("Error notification sent to Discord.")
+        except Exception as send_err:
+            print(f"Failed to send error notification to Discord: {send_err}")
