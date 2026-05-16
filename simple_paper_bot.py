@@ -24,11 +24,11 @@ def fetch_papers(keywords, days):
     # 1. arXivから取得
     content += "## arXiv\n"
     client = arxiv.Client(
-        page_size=100,
+        page_size=50,
         delay_seconds=3.0,
         num_retries=5
         )
-    search = arxiv.Search(query=f'all:"{keywords}"', max_results=100, sort_by=arxiv.SortCriterion.SubmittedDate)
+    search = arxiv.Search(query=f'all:"{keywords}"', max_results=50, sort_by=arxiv.SortCriterion.SubmittedDate)
     
     arxiv_count = 0
     for result in client.results(search):
@@ -37,9 +37,10 @@ def fetch_papers(keywords, days):
             continue
             
         content += f"- **{result.title}**\n  - URL: {result.entry_id}\n  - Summary: {result.summary[:200].replace(chr(10), ' ')}...\n\n"
-        arxiv_count += 1
+        
+        """arxiv_count += 1
         if arxiv_count >= 10:
-            break
+            break"""
 
     print("Fetching from Crossref (Selected Journals)...")
     # 2. 指定したジャーナルからのみ取得
