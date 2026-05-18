@@ -15,6 +15,8 @@ SCOPES = ['https://www.googleapis.com/auth/drive.file']
 
 # Discord Webhook for error
 DISCORD_ERROR = 'https://discord.com/api/webhooks/1505023099492372672/tcsWs9KogPc0J6tSleMws5OXvndX0CIOSibVkl8khUuNNSIl-pA8J3KP0BFNLvkmBTdF'
+ARXIV_PAGE_SIZE = 20
+
 
 def fetch_papers(keywords, days):
     last_day = (datetime.datetime.now() - datetime.timedelta(days=days)).strftime('%Y-%m-%d')
@@ -24,11 +26,11 @@ def fetch_papers(keywords, days):
     # 1. arXivから取得
     content += "## arXiv\n"
     client = arxiv.Client(
-        page_size=50,
+        page_size=ARXIV_PAGE_SIZE,
         delay_seconds=3.0,
         num_retries=5
         )
-    search = arxiv.Search(query=f'all:"{keywords}"', max_results=50, sort_by=arxiv.SortCriterion.SubmittedDate)
+    search = arxiv.Search(query=f'all:"{keywords}"', max_results=ARXIV_PAGE_SIZE, sort_by=arxiv.SortCriterion.SubmittedDate)
     
     arxiv_count = 0
     for result in client.results(search):
