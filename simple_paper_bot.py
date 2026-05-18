@@ -38,7 +38,7 @@ def fetch_papers(keywords, days):
         if keywords.lower() not in result.title.lower() and keywords.lower() not in result.summary.lower():
             continue
             
-        content += f"- **{result.title}**\n  - URL: {result.entry_id}\n  - Summary: {result.summary[:200].replace(chr(10), ' ')}...\n\n"
+        content += f"- **{result.title}**\n author: {', '.join(author.name for author in result.authors)}\n - URL: {result.entry_id}\n  - Summary: {result.summary[:200].replace(chr(10), ' ')}...\n\n"
         
         """arxiv_count += 1
         if arxiv_count >= 10:
@@ -87,7 +87,7 @@ def fetch_papers(keywords, days):
         url = item.get('URL', f"https://doi.org/{doi}")
         journal = item.get('container-title', ['Unknown'])[0]
         
-        content += f"- **{title}** ({journal})\n  - DOI: {doi}\n  - URL: {url}\n\n"
+        content += f"- **{title}** ({journal})\n author: {', '.join(author.name for author in result.authors)}\n - DOI: {doi}\n  - URL: {url}\n\n"
 
     return content
 
