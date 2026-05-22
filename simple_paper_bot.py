@@ -222,7 +222,7 @@ def send_to_discord(file_path, webhook_url):
 if __name__ == "__main__":
     # --- 設定 ---
     parser = argparse.ArgumentParser()
-    parser.add_argument('--keywords', type=str, nargs='+', default=["active matter", "microtubules", "actin", "motor proteins", "kinesin", "myosin", "dynein"], help="One or more keywords for OR search (e.g., --keywords 'active matter' 'liquid crystal')")
+    parser.add_argument('--keywords', type=str, nargs='+', default=["active matter", "microtubules", "actin", "motor proteins", "kinesin", "myosin", "dynein", "Living matter & active matter", "Colloids", "Nonlinear"], help="One or more keywords for OR search (e.g., --keywords 'active matter' 'liquid crystal')")
     parser.add_argument('--days', type=int, default=1)
     parser.add_argument('--filename', type=str, default=None)
     parser.add_argument('--save_folder', type=str, default=None)
