@@ -18,9 +18,10 @@ DISCORD_ERROR = 'https://discord.com/api/webhooks/1505023099492372672/tcsWs9KogP
 ARXIV_PAGE_SIZE = 30
 
 
-def fetch_papers(keywords, days):
+def fetch_papers(keywords_list, days):
     last_day = (datetime.datetime.now() - datetime.timedelta(days=days)).strftime('%Y-%m-%d')
-    content = f"# Daily Active Matter Papers ({last_day} to {datetime.datetime.now().strftime('%Y-%m-%d')})\n\n"
+    keywords_str = ", ".join(keywords_list)
+    content = f"# Daily Papers for {keywords_str} ({last_day} to {datetime.datetime.now().strftime('%Y-%m-%d')})\n\n"
 
     print("Fetching from arXiv...")
     # 1. arXivから取得
@@ -30,12 +31,14 @@ def fetch_papers(keywords, days):
         delay_seconds=3.0,
         num_retries=5
         )
-    search = arxiv.Search(query=f'all:"{keywords}"', max_results=ARXIV_PAGE_SIZE, sort_by=arxiv.SortCriterion.SubmittedDate)
+    
+    arxiv_query = " OR ".join([f'all:"{k}"' for k in keywords_list])
+    search = arxiv.Search(query=arxiv_query, max_results=ARXIV_PAGE_SIZE, sort_by=arxiv.SortCriterion.SubmittedDate)
     
     arxiv_count = 0
     for result in client.results(search):
         # 厳密なフレーズマッチングのフィルタリング
-        if keywords.lower() not in result.title.lower() and keywords.lower() not in result.summary.lower():
+        if not any(k.lower() in result.title.lower() or k.lower() in result.summary.lower() for k in keywords_list):
             continue
             
         content += f"- **{result.title}**\n -Authors: {', '.join(author.name for author in result.authors)} \n -Date: {result.updated.strftime('%Y-%m-%d')} \n - URL: {result.entry_id}\n  - Summary: {result.summary[:200].replace(chr(10), ' ')}...\n\n"
@@ -63,31 +66,50 @@ def fetch_papers(keywords, days):
 
     cr = Crossref()
     
-    # フィルタにissnを追加
-    res = cr.works(
-        query=f'"{keywords}"', 
-        filter={
-            'from-pub-date': last_day,
-            'issn': target_issns
-        }, 
-        limit=500,
-        sort='published', 
-        order='desc'
-    )
+    seen_dois = set()
     
-    for item in res['message']['items']:
-        title = item.get('title', ['No Title'])[0]
-        abstract = item.get('abstract', '')
+    for keyword in keywords_list:
+        # フィルタにissnを追加
+        res = cr.works(
+            query=f'"{keyword}"', 
+            filter={
+                'from-pub-date': last_day,
+                'issn': target_issns
+            }, 
+            limit=500,
+            sort='published', 
+            order='desc'
+        )
         
-        # 厳密なフレーズマッチングのフィルタリング
-        if keywords.lower() not in title.lower() and keywords.lower() not in abstract.lower():
-            continue
+        for item in res['message']['items']:
+            title = item.get('title', ['No Title'])[0]
+            abstract = item.get('abstract', '')
             
-        doi = item.get('DOI', 'No DOI')
-        url = item.get('URL', f"https://doi.org/{doi}")
-        journal = item.get('container-title', ['Unknown'])[0]
-        
-        content += f"- **{title}** ({journal})\n -Authors: {', '.join(author.name for author in result.authors)}\n -Date: {result.updated.strftime('%Y-%m-%d')}\n - DOI: {doi}\n  - URL: {url}\n\n"
+            # 厳密なフレーズマッチングのフィルタリング
+            if keyword.lower() not in title.lower() and keyword.lower() not in abstract.lower():
+                continue
+                
+            doi = item.get('DOI', 'No DOI')
+            if doi in seen_dois:
+                continue
+            seen_dois.add(doi)
+            
+            url = item.get('URL', f"https://doi.org/{doi}")
+            journal = item.get('container-title', ['Unknown'])[0]
+            
+            # Crossref用の著者と日付の抽出
+            authors_list = item.get('author', [])
+            author_names = [f"{a.get('given', '')} {a.get('family', '')}".strip() for a in authors_list]
+            authors_str = ', '.join(author_names) if author_names else 'Unknown'
+            
+            published = item.get('published-print', item.get('published-online', item.get('created', {})))
+            date_parts = published.get('date-parts', [[None]])[0]
+            if date_parts and date_parts[0]:
+                date_str = '-'.join(f"{p:02d}" for p in date_parts if p)
+            else:
+                date_str = "Unknown"
+            
+            content += f"- **{title}** ({journal})\n -Authors: {authors_str}\n -Date: {date_str}\n - DOI: {doi}\n  - URL: {url}\n\n"
 
     return content
 
@@ -200,7 +222,7 @@ def send_to_discord(file_path, webhook_url):
 if __name__ == "__main__":
     # --- 設定 ---
     parser = argparse.ArgumentParser()
-    parser.add_argument('--keywords', type=str, default="active matter")
+    parser.add_argument('--keywords', type=str, nargs='+', default=["active matter", "microtubules", "actin", "motor proteins", "kinesin", "myosin", "dynein"], help="One or more keywords for OR search (e.g., --keywords 'active matter' 'liquid crystal')")
     parser.add_argument('--days', type=int, default=1)
     parser.add_argument('--filename', type=str, default=None)
     parser.add_argument('--save_folder', type=str, default=None)
@@ -208,7 +230,7 @@ if __name__ == "__main__":
     parser.add_argument('--discord_webhook', type=str, default="https://discord.com/api/webhooks/1504761505151844433/C9Ns2fw9IAjhBcUOnP4TqQ4bwOqnYUUd8WxlDVN1MZ9_R1nd3_3Y7H7HFwEJtCS2voxJ", help="Discord Webhook URL to send the report")
     
     args = parser.parse_args()
-    keywords = args.keywords
+    keywords_list = args.keywords
     days = args.days
     filename = args.filename
     save_folder = args.save_folder
@@ -218,7 +240,8 @@ if __name__ == "__main__":
     print("Start paper bot at", datetime.datetime.now())
 
     if filename is None:
-        filename = f"Active_Matter_Review_{datetime.date.today()}.md"
+        safe_keyword = keywords_list[0].replace(' ', '_')
+        filename = f"{safe_keyword}_Review_{datetime.date.today()}.md"
     else:
         filename = f"{filename}.md"
     
@@ -229,7 +252,7 @@ if __name__ == "__main__":
 
     try:    
         print("Start fetching papers...")
-        papers_content = fetch_papers(keywords, days)
+        papers_content = fetch_papers(keywords_list, days)
         save_to_local(papers_content, filename)
         
         if upload:
