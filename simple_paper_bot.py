@@ -19,8 +19,9 @@ ARXIV_PAGE_SIZE = 20
 
 
 def fetch_papers(keywords, days):
+    kw_list = [k.strip() for k in keywords.split(",")]
     last_day = (datetime.datetime.now() - datetime.timedelta(days=days)).strftime('%Y-%m-%d')
-    content = f"# Daily Active Matter Papers ({last_day} to {datetime.datetime.now().strftime('%Y-%m-%d')})\n\n"
+    content = f"# Daily Papers for {keywords} ({last_day} to {datetime.datetime.now().strftime('%Y-%m-%d')})\n\n"
 
     print("Fetching from arXiv...")
     # 1. arXivから取得
@@ -30,19 +31,23 @@ def fetch_papers(keywords, days):
         delay_seconds=3.0,
         num_retries=5
         )
-    search = arxiv.Search(query=f'all:"{keywords}"', max_results=ARXIV_PAGE_SIZE, sort_by=arxiv.SortCriterion.SubmittedDate)
-    
-    arxiv_count = 0
-    for result in client.results(search):
-        # 厳密なフレーズマッチングのフィルタリング
-        if keywords.lower() not in result.title.lower() and keywords.lower() not in result.summary.lower():
-            continue
+
+    seen_arxiv_ids = set()
+    for kw in kw_list:
+        try:
+            search = arxiv.Search(query=f'all:"{kw}"', max_results=ARXIV_PAGE_SIZE, sort_by=arxiv.SortCriterion.SubmittedDate)
             
-        content += f"- **{result.title}**\n -Authors: {', '.join(author.name for author in result.authors)}\n -Date: {result.updated.strftime('%Y-%m-%d')}\n - URL: {result.entry_id}\n  - Summary: {result.summary[:200].replace(chr(10), ' ')}...\n\n"
-        
-        """arxiv_count += 1
-        if arxiv_count >= 10:
-            break"""
+            for result in client.results(search):
+                if result.entry_id in seen_arxiv_ids:
+                    continue
+                # 厳密なフレーズマッチングのフィルタリング
+                if not any(k.lower() in result.title.lower() or k.lower() in result.summary.lower() for k in kw_list):
+                    continue
+
+                seen_arxiv_ids.add(result.entry_id)
+                content += f"- **{result.title}**\n -Authors: {', '.join(author.name for author in result.authors)}\n -Date: {result.updated.strftime('%Y-%m-%d')}\n - URL: {result.entry_id}\n  - Summary: {result.summary[:200].replace(chr(10), ' ')}...\n\n"
+        except Exception as e:
+            print(f"Error fetching arxiv for keyword '{kw}': {e}")
 
     print("Fetching from Crossref (Selected Journals)...")
     # 2. 指定したジャーナルからのみ取得
@@ -64,8 +69,9 @@ def fetch_papers(keywords, days):
     cr = Crossref()
     
     # フィルタにissnを追加
+    crossref_query = " OR ".join([f'"{kw}"' for kw in kw_list])
     res = cr.works(
-        query=f'"{keywords}"', 
+        query=crossref_query,
         filter={
             'from-pub-date': last_day,
             'issn': target_issns
@@ -80,14 +86,24 @@ def fetch_papers(keywords, days):
         abstract = item.get('abstract', '')
         
         # 厳密なフレーズマッチングのフィルタリング
-        if keywords.lower() not in title.lower() and keywords.lower() not in abstract.lower():
+        if not any(k.lower() in title.lower() or k.lower() in abstract.lower() for k in kw_list):
             continue
             
         doi = item.get('DOI', 'No DOI')
         url = item.get('URL', f"https://doi.org/{doi}")
         journal = item.get('container-title', ['Unknown'])[0]
         
-        content += f"- **{title}** ({journal})\n -Authors: {', '.join(author.name for author in result.authors)}\n -Date: {result.updated.strftime('%Y-%m-%d')}\n - DOI: {doi}\n  - URL: {url}\n\n"
+        authors_list = item.get('author', [])
+        authors_str = ', '.join([a.get('family', '') + ' ' + a.get('given', '') for a in authors_list]).strip()
+
+        published = item.get('published-print', item.get('published-online', item.get('created', {})))
+        date_parts = published.get('date-parts', [[None]])[0]
+        try:
+            date_str = f"{date_parts[0]}-{date_parts[1]:02d}-{date_parts[2]:02d}" if len(date_parts) == 3 else str(date_parts[0])
+        except:
+            date_str = str(date_parts[0])
+
+        content += f"- **{title}** ({journal})\n -Authors: {authors_str}\n -Date: {date_str}\n - DOI: {doi}\n  - URL: {url}\n\n"
 
     return content
 
