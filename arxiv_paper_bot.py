@@ -5,7 +5,6 @@ import os
 import requests
 import time
 import random
-from habanero import Crossref
 from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import InstalledAppFlow
@@ -29,7 +28,7 @@ class CustomSession(requests.Session):
         return super().send(request, **kwargs)
 
 
-def fetch_papers(keywords_list, days):
+def fetch_arxiv_papers(keywords_list, days):
     last_day = (datetime.datetime.now() - datetime.timedelta(days=days)).strftime('%Y-%m-%d')
     keywords_str = ", ".join(keywords_list)
     content = f"# Daily Papers for {keywords_str} ({last_day} to {datetime.datetime.now().strftime('%Y-%m-%d')})\n\n"
@@ -79,82 +78,12 @@ def fetch_papers(keywords_list, days):
             print(f"Retrying in {sleep_time:.2f} seconds... (Note: Pressing Ctrl+C and running again immediately will prolong the rate-limit block from arXiv)")
             time.sleep(sleep_time)
 
-    arxiv_count = 0
     for result in results:
         # 厳密なフレーズマッチングのフィルタリング
         if not any(k.lower() in result.title.lower() or k.lower() in result.summary.lower() for k in keywords_list):
             continue
             
         content += f"- **{result.title}**\n -Authors: {', '.join(author.name for author in result.authors)} \n -Date: {result.updated.strftime('%Y-%m-%d')} \n - URL: {result.entry_id}\n  - Summary: {result.summary[:200].replace(chr(10), ' ')}...\n\n"
-        
-        """arxiv_count += 1
-        if arxiv_count >= 10:
-            break"""
-
-    print("Fetching from Crossref (Selected Journals)...")
-    # 2. 指定したジャーナルからのみ取得
-    content += "## Selected High-Impact Journals\n"
-    
-    # 指定されたジャーナルのISSNリスト
-    target_issns = [
-        '1476-4687', '1755-4349', '1745-2481', '2041-1723', '1476-4660', '0027-8424', 
-        '2752-6542', '2470-0045', '2160-3308', '0031-9007', '1744-683X', '2375-2548', 
-        '1530-6984', '0743-7463', '1936-0851', '2835-8279', '1095-9203', '1549-9626'
-    ]
-
-    """
-    Nature, Nature Chemistry, Nature Physics, Nature Communications, Nature materials, PNAS, 
-    PNAS-Nexus, Physical Review E, Physical Review X, Physical Review Letters, Soft Matter, Science Advances, 
-    Nano Letters, Langmuir, ACS nano, PRX Life, Science, JCTC, 
-    """
-
-    # Set a custom timeout to prevent httpx.ReadTimeout and add mailto for polite pool
-    cr = Crossref(mailto="sasaki.nozomu.45z@st.kyoto-u.ac.jp", timeout=60)
-    
-    seen_dois = set()
-    
-    for keyword in keywords_list:
-        # フィルタにissnを追加
-        res = cr.works(
-            query=f'"{keyword}"', 
-            filter={
-                'from-pub-date': last_day,
-                'issn': target_issns
-            }, 
-            limit=500,
-            sort='published', 
-            order='desc'
-        )
-        
-        for item in res['message']['items']:
-            title = item.get('title', ['No Title'])[0]
-            abstract = item.get('abstract', '')
-            
-            # 厳密なフレーズマッチングのフィルタリング
-            if keyword.lower() not in title.lower() and keyword.lower() not in abstract.lower():
-                continue
-                
-            doi = item.get('DOI', 'No DOI')
-            if doi in seen_dois:
-                continue
-            seen_dois.add(doi)
-            
-            url = item.get('URL', f"https://doi.org/{doi}")
-            journal = item.get('container-title', ['Unknown'])[0]
-            
-            # Crossref用の著者と日付の抽出
-            authors_list = item.get('author', [])
-            author_names = [f"{a.get('given', '')} {a.get('family', '')}".strip() for a in authors_list]
-            authors_str = ', '.join(author_names) if author_names else 'Unknown'
-            
-            published = item.get('published-print', item.get('published-online', item.get('created', {})))
-            date_parts = published.get('date-parts', [[None]])[0]
-            if date_parts and date_parts[0]:
-                date_str = '-'.join(f"{p:02d}" for p in date_parts if p)
-            else:
-                date_str = "Unknown"
-            
-            content += f"- **{title}** ({journal})\n -Authors: {authors_str}\n -Date: {date_str}\n - DOI: {doi}\n  - URL: {url}\n\n"
 
     return content
 
@@ -282,11 +211,11 @@ if __name__ == "__main__":
     upload = args.upload
     discord_webhook = args.discord_webhook
 
-    print("Start paper bot at", datetime.datetime.now())
+    print("Start arXiv paper bot at", datetime.datetime.now())
 
     if filename is None:
         safe_keyword = keywords_list[0].replace(' ', '_')
-        filename = f"{safe_keyword}_Review_{datetime.date.today()}.md"
+        filename = f"arXiv_{safe_keyword}_Review_{datetime.date.today()}.md"
     else:
         filename = f"{filename}.md"
     
@@ -296,8 +225,8 @@ if __name__ == "__main__":
         filename = f"papers/{filename}"
 
     try:    
-        print("Start fetching papers...")
-        papers_content = fetch_papers(keywords_list, days)
+        print("Start fetching arXiv papers...")
+        papers_content = fetch_arxiv_papers(keywords_list, days)
         save_to_local(papers_content, filename)
         
         if upload:
@@ -325,7 +254,7 @@ if __name__ == "__main__":
         # Discordの通知用テキスト（2000文字制限を考慮してスライス）
         discord_error_text = (
             "<@520785852423733248> \n"
-            f"❌ **【Paper Bot エラー通知】**\n"
+            f"❌ **【arXiv Paper Bot エラー通知】**\n"
             f"プログラムの実行中にエラーが発生しました。\n"
             f"```python\n{error_msg}```"
         )[:1950]

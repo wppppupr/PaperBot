@@ -1,10 +1,7 @@
 import datetime
-import arxiv
 import argparse
 import os
 import requests
-import time
-import random
 from habanero import Crossref
 from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
@@ -17,79 +14,11 @@ SCOPES = ['https://www.googleapis.com/auth/drive.file']
 
 # Discord Webhook for error
 DISCORD_ERROR = 'https://discord.com/api/webhooks/1505023099492372672/tcsWs9KogPc0J6tSleMws5OXvndX0CIOSibVkl8khUuNNSIl-pA8J3KP0BFNLvkmBTdF'
-ARXIV_PAGE_SIZE = 20
 
-
-class CustomSession(requests.Session):
-    def send(self, request, **kwargs):
-        # The default User-Agent of arxiv.py library (arxiv.py/2.3.2) is shared by many users and
-        # is frequently blocked or rate-limited. Setting a custom descriptive User-Agent identifies
-        # our application uniquely and prevents aggressive rate-limit blocking from arXiv.
-        request.headers['User-Agent'] = 'PaperBot/1.0 (sasaki@Kawamata-PC02; mailto:sasaki@example.com)'
-        return super().send(request, **kwargs)
-
-
-def fetch_papers(keywords_list, days):
+def fetch_journal_papers(keywords_list, days):
     last_day = (datetime.datetime.now() - datetime.timedelta(days=days)).strftime('%Y-%m-%d')
     keywords_str = ", ".join(keywords_list)
     content = f"# Daily Papers for {keywords_str} ({last_day} to {datetime.datetime.now().strftime('%Y-%m-%d')})\n\n"
-
-    print("Fetching from arXiv...")
-    # 1. arXivから取得
-    content += "## arXiv\n"
-    client = arxiv.Client(
-        page_size=ARXIV_PAGE_SIZE,
-        delay_seconds=3.0,
-        num_retries=5
-        )
-    client._session = CustomSession()
-    
-    cond_mat_categories = [
-        #"cond-mat.dis-nn",
-        #"cond-mat.mes-hall",
-        #"cond-mat.mtrl-sci",
-        #"cond-mat.other",
-        #"cond-mat.quant-gas",
-        "cond-mat.soft",
-        "cond-mat.stat-mech",
-        "physics.bio-ph"
-        #"cond-mat.str-el",
-        #"cond-mat.supr-con"
-    ]
-    cat_query = " OR ".join([f"cat:{c}" for c in cond_mat_categories])
-    keywords_query = " OR ".join([f'all:"{k}"' for k in keywords_list])
-    arxiv_query = f"({cat_query}) AND ({keywords_query})"
-    search = arxiv.Search(query=arxiv_query, max_results=ARXIV_PAGE_SIZE, sort_by=arxiv.SortCriterion.SubmittedDate)
-    
-    # Implement exponential backoff with jitter to handle HTTP 429 / 503 rate limits
-    results = []
-    max_attempts = 5
-    for attempt in range(max_attempts):
-        try:
-            results = list(client.results(search))
-            break
-        except (arxiv.HTTPError, arxiv.UnexpectedEmptyPageError, requests.exceptions.RequestException) as e:
-            if attempt == max_attempts - 1:
-                print("Failed to fetch papers from arXiv after maximum retry attempts.")
-                raise e
-            
-            # Exponential backoff + jitter (e.g., 5s, 10s, 20s, 40s + 0-3s random delay)
-            sleep_time = (2 ** attempt) * 5 + random.uniform(0, 3)
-            print(f"arXiv API request failed ({e}).")
-            print(f"Retrying in {sleep_time:.2f} seconds... (Note: Pressing Ctrl+C and running again immediately will prolong the rate-limit block from arXiv)")
-            time.sleep(sleep_time)
-
-    arxiv_count = 0
-    for result in results:
-        # 厳密なフレーズマッチングのフィルタリング
-        if not any(k.lower() in result.title.lower() or k.lower() in result.summary.lower() for k in keywords_list):
-            continue
-            
-        content += f"- **{result.title}**\n -Authors: {', '.join(author.name for author in result.authors)} \n -Date: {result.updated.strftime('%Y-%m-%d')} \n - URL: {result.entry_id}\n  - Summary: {result.summary[:200].replace(chr(10), ' ')}...\n\n"
-        
-        """arxiv_count += 1
-        if arxiv_count >= 10:
-            break"""
 
     print("Fetching from Crossref (Selected Journals)...")
     # 2. 指定したジャーナルからのみ取得
@@ -282,11 +211,11 @@ if __name__ == "__main__":
     upload = args.upload
     discord_webhook = args.discord_webhook
 
-    print("Start paper bot at", datetime.datetime.now())
+    print("Start journal paper bot at", datetime.datetime.now())
 
     if filename is None:
         safe_keyword = keywords_list[0].replace(' ', '_')
-        filename = f"{safe_keyword}_Review_{datetime.date.today()}.md"
+        filename = f"Journal_{safe_keyword}_Review_{datetime.date.today()}.md"
     else:
         filename = f"{filename}.md"
     
@@ -296,8 +225,8 @@ if __name__ == "__main__":
         filename = f"papers/{filename}"
 
     try:    
-        print("Start fetching papers...")
-        papers_content = fetch_papers(keywords_list, days)
+        print("Start fetching journal papers...")
+        papers_content = fetch_journal_papers(keywords_list, days)
         save_to_local(papers_content, filename)
         
         if upload:
@@ -325,7 +254,7 @@ if __name__ == "__main__":
         # Discordの通知用テキスト（2000文字制限を考慮してスライス）
         discord_error_text = (
             "<@520785852423733248> \n"
-            f"❌ **【Paper Bot エラー通知】**\n"
+            f"❌ **【Journal Paper Bot エラー通知】**\n"
             f"プログラムの実行中にエラーが発生しました。\n"
             f"```python\n{error_msg}```"
         )[:1950]
