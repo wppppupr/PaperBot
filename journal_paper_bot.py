@@ -56,6 +56,21 @@ def fetch_journal_papers(keywords_list, days):
         )
         
         for item in res['message']['items']:
+            # 1. type == 'posted-content' の除外（プレプリント・未掲載論文）
+            if item.get('type') == 'posted-content':
+                continue
+            
+            # 2. subtype == 'accepted-manuscript' の除外（採択原稿）
+            if item.get('subtype') == 'accepted-manuscript':
+                continue
+                
+            # 3. Articles in Press の除外（volume, issue, pageの欠落、または published-print がない場合）
+            if 'volume' not in item or 'issue' not in item or 'page' not in item:
+                continue
+                
+            if 'published-print' not in item and 'published-online' in item:
+                continue
+
             title = item.get('title', ['No Title'])[0]
             abstract = item.get('abstract', '')
             
