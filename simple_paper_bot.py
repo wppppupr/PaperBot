@@ -23,20 +23,29 @@ def fetch_arxiv(keywords, days):
     
     # 検索クエリの構築
     keywords_query = " OR ".join([f'all:"{k}"' for k in keywords])
-    # 日付はフィルター側で厳密に処理するため、クエリはキーワードを主軸にする
-    query = " OR ".join(keywords)
+
+    # ターゲットとするカテゴリを定義
+    cond_mat_categories = [
+        "cond-mat.soft",       # ソフトマター
+        "cond-mat.stat-mech",  # 統計力学
+        "physics.bio-ph",      # 生物物理
+        "physics.flu-dyn",     # 流体力学
+        "nlin.PS",             # 非線形科学 - パターン形成
+        "q-bio.CB"             # 分子生物学 - 生物学的計算
+    ]
+    cat_query = " OR ".join([f"cat:{c}" for c in cond_mat_categories])
+    arxiv_query = f"({cat_query}) AND ({keywords_query})"
 
     client = arxiv.Client(page_size=ARXIV_PAGE_SIZE, delay_seconds=2)
     # 過去数日分の論文を網羅するため、max_resultsは少し多めに設定
-    search = arxiv.Search(query=query, max_results=200, sort_by=arxiv.SortCriterion.SubmittedDate)
+    search = arxiv.Search(query=arxiv_query, max_results=200, sort_by=arxiv.SortCriterion.SubmittedDate)
 
     papers = []
     try:
         for r in client.results(search):
-            # 提出日（または更新日）がターゲットより古い場合はスキップ
-            # arxivライブラリのr.updatedはタイムゾーン付き(UTC)のため比較可能
+            # ⚠️ データ取りこぼし（バグ）を防ぐため、breakではなくcontinueを使用
             if r.updated < target_date:
-                break
+                continue
                 
             papers.append({
                 "title": r.title,
@@ -48,11 +57,11 @@ def fetch_arxiv(keywords, days):
     except Exception as e:
         print(f"arXiv error: {e}")
 
-    #papers.sort(key=lambda x: x['date'] or "", reverse=True)
+    # 重複除去の前に日付順でソート（最新順を担保）
+    papers.sort(key=lambda x: x['date'] or "", reverse=True)
 
     print(f"arXiv: {len(papers)} papers")
     return papers
-
 
 # -----------------------------
 # OpenAlex取得
@@ -74,7 +83,7 @@ def fetch_openalex(keywords, days, journal_issns=None):
     print("Fetching from OpenAlex...")
 
     last_day = (datetime.datetime.now() - datetime.timedelta(days=days)).strftime('%Y-%m-%d')
-    query = " OR ".join(keywords)
+    query = " OR ".join([f'"{k}"' for k in keywords])
 
     url = "https://api.openalex.org/works"
     headers = {"User-Agent": f"PaperNotifier/1.0 (mailto:{OPENALEX_MAILER})"}
@@ -85,7 +94,7 @@ def fetch_openalex(keywords, days, journal_issns=None):
         journals_filter = "|".join(journal_issns)
         filter_str += f",primary_location.source.issn:{journals_filter}"
 
-    for page in range(1, 4):
+    for page in range(1, 3):
         params = {
             "search": query,
             "filter": filter_str,
@@ -277,17 +286,46 @@ def send_discord(file_path, webhook):
 # -----------------------------
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument('--days', type=int, default=1)
+    parser.add_argument('--days', type=int, default=3)
     parser.add_argument('--output', type=str, default=None)
     parser.add_argument('--discord', type=str, default="https://discord.com/api/webhooks/1504761505151844433/C9Ns2fw9IAjhBcUOnP4TqQ4bwOqnYUUd8WxlDVN1MZ9_R1nd3_3Y7H7HFwEJtCS2voxJ")
     parser.add_argument(
         '--keywords',
         nargs='+',
         default=[
-            "active matter", "active nematic", "self-propelled",
-            "collective motion", "actin", "microtubule",
-            "motor protein", "kinesin", "dynein", "myosin",
-            "cytoskeleton", "colloidal", "non-equilibrium", "active suspension", "active fluid", "living matter"
+            "active matter", "active nematic", "self-propelled", "phase separation", "flocking", "pattern formation", "swarming","biofluid","macromolecular crowding",
+            "collective motion", "actin", "microtubule", "topological defect", "cell motility", "cellular motility", "cytoplasmic streaming", "biological fluid",
+            "motor protein", "kinesin", "dynein", "myosin","active Brownian","run-and-tumble","hydrodynamics","self-organization",
+            "cytoskeleton", "colloidal", "non-equilibrium", "active suspension", "active fluid", "living matter",
+            "active turbulence",
+            "active stress",
+            "active gel",
+            "active phase separation",
+            "MIPS",
+            "motility-induced phase separation",
+            "emergent behavior",
+            "self-organization",
+            "collective behavior",
+            "dense active matter",
+            "active liquid crystal",
+            "nonequilibrium pattern formation",
+            "mechanobiology",
+            "cell mechanics",
+            "active filament",
+            "microtubule network",
+            "actomyosin",
+            "cytoskeletal dynamics",
+            "collective cell migration",
+            "epithelium",
+            "epithelial mechanics",
+            "tissue mechanics",
+            "nematic defect",
+            "defect dynamics",
+            "liquid crystal elastomer",
+            "extensile",
+            "contractile active matter",
+            "actomyosin"
+
         ]
     )
 
