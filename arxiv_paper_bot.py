@@ -10,9 +10,51 @@ from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import InstalledAppFlow
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaFileUpload
+import google.generativeai as genai
 
 # Google Drive API scopes
 SCOPES = ['https://www.googleapis.com/auth/drive.file']
+
+gemini_API_key = os.getenv('GEMINI_API_KEY', '')
+genai.configure(api_key=gemini_API_key)
+
+import json
+
+def translate_abstracts_batch(abstracts):
+    if not abstracts:
+        return []
+    
+    translated = []
+    chunk_size = 10
+    model = genai.GenerativeModel("gemini-3.1-flash-lite")
+    
+    for i in range(0, len(abstracts), chunk_size):
+        chunk = abstracts[i:i+chunk_size]
+        prompt = "以下のJSON配列（英語の論文要約のリスト）を、同じ要素数のJSON配列として日本語に翻訳して出力してください。出力はJSON配列のみにしてください。\n\n"
+        prompt += json.dumps(chunk, ensure_ascii=False)
+        
+        try:
+            response = model.generate_content(prompt)
+            text = response.text.strip()
+            if text.startswith("```json"): text = text[7:]
+            elif text.startswith("```"): text = text[3:]
+            if text.endswith("```"): text = text[:-3]
+            text = text.strip()
+            
+            chunk_translated = json.loads(text)
+            if isinstance(chunk_translated, list) and len(chunk_translated) == len(chunk):
+                translated.extend([t.replace('\n', ' ') for t in chunk_translated])
+            else:
+                print(f"Warning: Batch size mismatch. Expected {len(chunk)}, got {len(chunk_translated) if isinstance(chunk_translated, list) else type(chunk_translated)}")
+                translated.extend(["翻訳に失敗しました。"] * len(chunk))
+        except Exception as e:
+            print(f"Batch translation error: {e}")
+            translated.extend(["翻訳に失敗しました。"] * len(chunk))
+            
+        if i + chunk_size < len(abstracts):
+            time.sleep(10)  # RPM対策のウェイト
+            
+    return translated
 
 # Discord Webhook for error
 DISCORD_ERROR = 'https://discord.com/api/webhooks/1505023099492372672/tcsWs9KogPc0J6tSleMws5OXvndX0CIOSibVkl8khUuNNSIl-pA8J3KP0BFNLvkmBTdF'
@@ -78,12 +120,28 @@ def fetch_arxiv_papers(keywords_list, days):
             print(f"Retrying in {sleep_time:.2f} seconds... (Note: Pressing Ctrl+C and running again immediately will prolong the rate-limit block from arXiv)")
             time.sleep(sleep_time)
 
+    papers_data = []
     for result in results:
         # 厳密なフレーズマッチングのフィルタリング
         if not any(k.lower() in result.title.lower() or k.lower() in result.summary.lower() for k in keywords_list):
             continue
             
-        content += f"- **{result.title}**\n -Authors: {', '.join(author.name for author in result.authors)} \n -Date: {result.updated.strftime('%Y-%m-%d')} \n - URL: {result.entry_id}\n  - Summary: {result.summary[:200].replace(chr(10), ' ')}...\n\n"
+        clean_abstract = result.summary.replace('\n', ' ').strip()
+        papers_data.append({
+            'title': result.title,
+            'authors_str': ', '.join(author.name for author in result.authors),
+            'date_str': result.updated.strftime('%Y-%m-%d'),
+            'url': result.entry_id,
+            'abstract': clean_abstract
+        })
+        
+    print(f"Collected {len(papers_data)} papers. Translating abstracts...")
+    abstracts_to_translate = [p['abstract'] for p in papers_data]
+    translated_abstracts = translate_abstracts_batch(abstracts_to_translate)
+    
+    for i, p in enumerate(papers_data):
+        trans = translated_abstracts[i] if i < len(translated_abstracts) else "翻訳に失敗しました。"
+        content += f"- **{p['title']}**\n - Authors: {p['authors_str']} \n - Date: {p['date_str']} \n - URL: {p['url']}\n - **Abstract:**\n  > {p['abstract']}\n - **和訳:**\n  > {trans}\n\n"
 
     return content
 

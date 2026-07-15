@@ -8,97 +8,163 @@ from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import InstalledAppFlow
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaFileUpload
+import google.generativeai as genai
 
 # Google Drive API scopes
 SCOPES = ['https://www.googleapis.com/auth/drive.file']
+gemini_API_key = os.getenv('GEMINI_API_KEY', '')
+genai.configure(api_key=gemini_API_key)
+
+import json
+import time
+
+def translate_abstracts_batch(abstracts):
+    if not abstracts:
+        return []
+    
+    translated = []
+    chunk_size = 10
+    model = genai.GenerativeModel("gemini-3.1-flash-lite")
+    
+    for i in range(0, len(abstracts), chunk_size):
+        chunk = abstracts[i:i+chunk_size]
+        prompt = "以下のJSON配列（英語の論文要約のリスト）を、同じ要素数のJSON配列として日本語に翻訳して出力してください。出力はJSON配列のみにしてください。\n\n"
+        prompt += json.dumps(chunk, ensure_ascii=False)
+        
+        try:
+            response = model.generate_content(prompt)
+            text = response.text.strip()
+            if text.startswith("```json"): text = text[7:]
+            elif text.startswith("```"): text = text[3:]
+            if text.endswith("```"): text = text[:-3]
+            text = text.strip()
+            
+            chunk_translated = json.loads(text)
+            if isinstance(chunk_translated, list) and len(chunk_translated) == len(chunk):
+                translated.extend([t.replace('\n', ' ') for t in chunk_translated])
+            else:
+                print(f"Warning: Batch size mismatch. Expected {len(chunk)}, got {len(chunk_translated) if isinstance(chunk_translated, list) else type(chunk_translated)}")
+                translated.extend(["翻訳に失敗しました。"] * len(chunk))
+        except Exception as e:
+            print(f"Batch translation error: {e}")
+            translated.extend(["翻訳に失敗しました。"] * len(chunk))
+            
+        if i + chunk_size < len(abstracts):
+            time.sleep(10)  # RPM対策のウェイト
+            
+    return translated
 
 # Discord Webhook for error
 DISCORD_ERROR = 'https://discord.com/api/webhooks/1505023099492372672/tcsWs9KogPc0J6tSleMws5OXvndX0CIOSibVkl8khUuNNSIl-pA8J3KP0BFNLvkmBTdF'
 
 def fetch_journal_papers(keywords_list, days):
     last_day = (datetime.datetime.now() - datetime.timedelta(days=days)).strftime('%Y-%m-%d')
+    today_str = datetime.date.today().strftime('%Y-%m-%d')
     keywords_str = ", ".join(keywords_list)
-    content = f"# Daily Papers for {keywords_str} ({last_day} to {datetime.datetime.now().strftime('%Y-%m-%d')})\n\n"
+
+    # --- 1. YAML Front Matter（AI・Obsidian用メタデータ） ---
+    content = "---\n"
+    content += f"date: {today_str}\n"
+    content += f"type: literature-monitor\n"
+    content += "tags:\n"
+    content += "  - paper-monitor\n"
+    content += "  - active-matter\n"  # メインのタグ
+    content += "keywords:\n"
+    for k in keywords_list:
+        content += f"  - \"{k}\"\n"
+    content += "---\n\n"
+
+    # --- 2. 人間用のタイトル ---
+    content += f"# Daily Papers Review ({today_str})\n"
+    content += f"**Target Period:** {last_day} to {today_str}\n\n"
 
     print("Fetching from Crossref (Selected Journals)...")
-    # 2. 指定したジャーナルからのみ取得
-    content += "## Selected High-Impact Journals\n"
+    content += "## 🧪 Selected High-Impact Journals\n\n"
     
-    # 指定されたジャーナルのISSNリスト
     target_issns = [
         '1476-4687', '1755-4349', '1745-2481', '2041-1723', '1476-4660', '0027-8424', 
         '2752-6542', '2470-0045', '2160-3308', '0031-9007', '1744-683X', '2375-2548', 
         '1530-6984', '0743-7463', '1936-0851', '2835-8279', '1095-9203', '1549-9626', '2643-1564'
     ]
 
-    """
-    Nature, Nature Chemistry, Nature Physics, Nature Communications, Nature materials, PNAS, 
-    PNAS-Nexus, Physical Review E, Physical Review X, Physical Review Letters, Soft Matter, Science Advances, 
-    Nano Letters, Langmuir, ACS nano, PRX Life, Science, JCTC,  PRR
-    """
-
-    # Set a custom timeout to prevent httpx.ReadTimeout and add mailto for polite pool
     cr = Crossref(mailto="sasaki.nozomu.45z@st.kyoto-u.ac.jp", timeout=60)
-    
     seen_dois = set()
     
+    papers_data = []
     for keyword in keywords_list:
-        # フィルタにissnを追加
         res = cr.works(
             query=f'"{keyword}"', 
-            filter={
-                'from-pub-date': last_day,
-                'issn': target_issns
-            }, 
-            limit=500,
-            sort='published', 
-            order='desc'
+            filter={'from-pub-date': last_day, 'issn': target_issns}, 
+            limit=500, sort='published', order='desc'
         )
         
         for item in res['message']['items']:
-            # 1. type == 'posted-content' の除外（プレプリント・未掲載論文）
-            if item.get('type') == 'posted-content':
-                continue
-            
-            # 2. subtype == 'accepted-manuscript' の除外（採択原稿）
-            if item.get('subtype') == 'accepted-manuscript':
-                continue
-                
-            # 3. Articles in Press の除外（volume, issue, pageの欠落、または published-print がない場合）
-            if 'volume' not in item or 'issue' not in item or 'page' not in item:
-                continue
-                
-            if 'published-print' not in item and 'published-online' in item:
-                continue
+            # （...中略：既存の各種 filter 処理...）
+            if item.get('type') == 'posted-content': continue
+            if item.get('subtype') == 'accepted-manuscript': continue
+            if 'volume' not in item or 'issue' not in item or 'page' not in item: continue
+            if 'published-print' not in item and 'published-online' in item: continue
 
             title = item.get('title', ['No Title'])[0]
             abstract = item.get('abstract', '')
             
-            # 厳密なフレーズマッチングのフィルタリング
             if keyword.lower() not in title.lower() and keyword.lower() not in abstract.lower():
                 continue
                 
             doi = item.get('DOI', 'No DOI')
-            if doi in seen_dois:
-                continue
+            if doi in seen_dois: continue
             seen_dois.add(doi)
             
             url = item.get('URL', f"https://doi.org/{doi}")
             journal = item.get('container-title', ['Unknown'])[0]
             
-            # Crossref用の著者と日付の抽出
             authors_list = item.get('author', [])
             author_names = [f"{a.get('given', '')} {a.get('family', '')}".strip() for a in authors_list]
-            authors_str = ', '.join(author_names) if author_names else 'Unknown'
+            
+            # 著者数が膨大な時のために少し省略（人間用）
+            if len(author_names) > 5:
+                authors_str = ', '.join(author_names[:5]) + " et al."
+            else:
+                authors_str = ', '.join(author_names) if author_names else 'Unknown'
             
             published = item.get('published-print', item.get('published-online', item.get('created', {})))
             date_parts = published.get('date-parts', [[None]])[0]
-            if date_parts and date_parts[0]:
-                date_str = '-'.join(f"{p:02d}" for p in date_parts if p)
-            else:
-                date_str = "Unknown"
+            date_str = '-'.join(f"{p:02d}" for p in date_parts if p) if (date_parts and date_parts[0]) else "Unknown"
             
-            content += f"- **{title}** ({journal})\n -Authors: {authors_str}\n -Date: {date_str}\n - DOI: {doi}\n  - URL: {url}\n\n"
+            clean_abstract = ""
+            if abstract:
+                clean_abstract = abstract.replace('<jats:p>', '').replace('</jats:p>', ' ')
+                
+            papers_data.append({
+                'title': title,
+                'journal': journal,
+                'authors_str': authors_str,
+                'date_str': date_str,
+                'url': url,
+                'doi': doi,
+                'abstract': clean_abstract
+            })
+            
+    print(f"Collected {len(papers_data)} papers. Translating abstracts...")
+    abstracts_to_translate = [p['abstract'] for p in papers_data if p['abstract']]
+    translated_abstracts = translate_abstracts_batch(abstracts_to_translate)
+    
+    trans_idx = 0
+    for p in papers_data:
+        # --- 3. 論文ごとのセクション（見出しベースに変更） ---
+        content += f"### 📄 {p['title']}\n"
+        content += f"- **Journal:** *{p['journal']}*\n"
+        content += f"- **Authors:** {p['authors_str']}\n"
+        content += f"- **Date:** {p['date_str']}\n"
+        content += f"- **Links:** [DOI/Publisher Path]({p['url']}) | `doi:{p['doi']}`\n"
+        
+        if p['abstract']:
+            trans = translated_abstracts[trans_idx] if trans_idx < len(translated_abstracts) else "翻訳に失敗しました。"
+            content += f"- **Abstract:**\n  > {p['abstract']}\n"
+            content += f"- **和訳:**\n  > {trans}\n"
+            trans_idx += 1
+            
+        content += "\n---\n\n"  # 論文ごとの区切り線
 
     return content
 
