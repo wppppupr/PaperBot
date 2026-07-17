@@ -5,16 +5,16 @@ import time
 import argparse
 import os
 import re
-import google.generativeai as genai
+from google import genai
 
 # -----------------------------
 # 設定
 # -----------------------------
 ARXIV_PAGE_SIZE = 50
-OPENALEX_MAILER = os.getenv("OPENALEX_MAILER", "your-email@example.com")  # Polite pool用
+OPENALEX_MAILER = os.getenv("OPENALEX_MAILER", "0704waffle@gmail.com")  # Polite pool用
 
 gemini_API_key = os.getenv('GEMINI_API_KEY', '')
-genai.configure(api_key=gemini_API_key)
+client = genai.Client(api_key=gemini_API_key.strip())
 
 import json
 import time
@@ -25,7 +25,6 @@ def translate_abstracts_batch(abstracts):
     
     translated = []
     chunk_size = 10
-    model = genai.GenerativeModel("gemini-3.1-flash-lite")
     
     for i in range(0, len(abstracts), chunk_size):
         chunk = abstracts[i:i+chunk_size]
@@ -33,7 +32,10 @@ def translate_abstracts_batch(abstracts):
         prompt += json.dumps(chunk, ensure_ascii=False)
         
         try:
-            response = model.generate_content(prompt)
+            response = client.models.generate_content(
+                model="gemini-3.1-flash-lite",
+                contents=prompt
+            )
             text = response.text.strip()
             if text.startswith("```json"): text = text[7:]
             elif text.startswith("```"): text = text[3:]
